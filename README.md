@@ -189,4 +189,179 @@ This lab introduced the basic workflow for synthesizing a design using Yosys.
 <img width="1920" height="1080" alt="sucessfully reafdverilog yosus file" src="https://github.com/user-attachments/assets/2df2aaa9-c5f0-4bfc-b7fa-5172b866a1dd" />
 <img width="1920" height="1080" alt="synthesis good mux" src="https://github.com/user-attachments/assets/145d5982-68c4-4dac-8d05-2a82a87fc592" />
 
+Verilog RTL Design and Synthesis: Day 2
+This document covers the topics from the second day of the workshop: a deeper look into timing libraries, a comparison of hierarchical and flat synthesis methods, and an introduction to efficient coding styles for flip-flops.
+
+Table of Contents
+Deep Dive into Timing Libraries (.lib)
+
+Understanding the Library File
+
+PVT Corners Explained
+
+Example: Anatomy of an AND Gate Cell
+
+Hierarchical vs. Flat Synthesis
+
+Synthesis Flow for a Hierarchical Design
+
+Sub-Module Level Synthesis
+
+Various Flop Coding Styles and Optimization
+
+Why Use Flip-Flops?
+
+Asynchronous Reset
+
+Deep Dive into Timing Libraries (.lib)
+Understanding the Library File
+The .lib (Liberty) file is the cornerstone of the synthesis process. It's a text file that characterizes a specific standard cell library for a given semiconductor technology. The synthesis tool (Yosys) uses this file to understand the building blocks it has available to convert your RTL code into a gate-level netlist.
+
+Let's break down the information found at the start of a typical .lib file:
+
+<img width="1920" height="1005" alt="image" src="https://github.com/user-attachments/assets/821bab15-2697-4aa4-9255-a92f78b8edc3" />
+
+
+Library Name: The file begins with a library name, for example, sky130_fd_sc_hd__tt_025C_1v80. This name is descriptive:
+
+sky130: Refers to the SkyWater 130nm manufacturing process.
+
+fd_sc_hd: Foundry-specific details about the standard cell library (e.g., standard cell, high-density).
+
+tt: Denotes the PVT corner—in this case, Typical-Typical. Libraries are also provided for other corners like ff (Fast-Fast) and ss (Slow-Slow).
+
+025C: The nominal temperature for this characterization, 25°C.
+
+1v80: The nominal voltage, 1.80V.
+
+Technology: Specifies the underlying transistor technology (e.g., CMOS).
+
+Units: Defines the base units for various physical quantities like time (e.g., 1ns), voltage (e.g., 1V), and current (e.g., 1mA).
+
+PVT Corners Explained
+The performance of silicon chips is heavily influenced by PVT conditions:
+
+Process: Refers to manufacturing variations during fabrication. Some chips will naturally have faster transistors (Fast process), while others will have slower ones (Slow process).
+
+Voltage: The operating voltage supplied to the chip can fluctuate. Higher voltage generally leads to faster performance, while lower voltage slows it down.
+
+Temperature: The ambient operating temperature affects transistor performance. Generally, higher temperatures cause transistors to slow down.
+
+Designers must ensure their circuit works correctly across all possible PVT corners, from the worst-case (Slow-Slow) to the best-case (Fast-Fast).
+
+Example: Anatomy of an AND Gate Cell
+By examining a specific cell, like a 2-input AND gate, we can see how the library provides different "flavors" to the synthesizer.
+
+<img width="1920" height="997" alt="image" src="https://github.com/user-attachments/assets/c7ebbefa-b4ab-400c-bda2-4d9eb8f24436" />
+
+
+Let's compare three different versions of a 2-input AND gate from the Sky130 library: sky130_fd_sc_hd__and2_1, sky130_fd_sc_hd__and2_2, and sky130_fd_sc_hd__and2_4.
+
+<img width="1920" height="989" alt="image" src="https://github.com/user-attachments/assets/e35ea64e-de1f-4e27-a5a4-c668e074162c" />
+
+
+The primary difference between these versions is their drive strength. This leads to a fundamental trade-off:
+
+and2_1 (Smallest): Has the smallest area. It uses narrow transistors, resulting in lower power consumption but a higher propagation delay.
+
+and2_2 (Medium): A mid-size option with balanced characteristics.
+
+and2_4 (Largest): Has the largest area. It employs wider transistors, which can drive subsequent logic faster (lower delay). However, this comes at the cost of higher power consumption.
+
+In summary: Wider cells consume more power and area but offer lower delay (faster performance). The synthesizer chooses from these flavors to meet the timing and power constraints of the design.
+
+Hierarchical vs. Flat Synthesis
+When a design is composed of multiple modules, the synthesizer can approach it in two main ways:
+
+Hierarchical Synthesis: Preserves the module boundaries defined in the RTL. Each module can be synthesized as a separate entity. This is the default behavior for many tools and is excellent for managing large designs.
+
+Flat Synthesis: Removes the module boundaries, combining all the logic into a single, large entity before optimization. This can sometimes yield better overall results but increases complexity and compilation time.
+
+For this lab, we explored hierarchical synthesis using the multiple_modules.v file. This file contains sub_module1 (an AND gate), sub_module2 (an OR gate), and a top module that instantiates both.
+
+Synthesis Flow for a Hierarchical Design
+Launch Yosys and load the library and design:
+
+bash
+# Launch yosys
+yosys
+
+# Load the standard cell library
+yosys> read_liberty -lib ./lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+
+# Load the Verilog design file
+yosys> read_verilog multiple_modules.v
+<img width="1920" height="997" alt="image" src="https://github.com/user-attachments/assets/dd13f05d-81ad-4665-b6da-7cb3ee901fc6" />
+
+
+Synthesize the top-level module:
+
+bash
+yosys> synth -top multiple_modules
+Yosys synthesizes the multiple_modules design, but keeps sub_module1 and sub_module2 as distinct entities within the hierarchy.
+
+<img width="1920" height="994" alt="image" src="https://github.com/user-attachments/assets/858da3c9-936e-4eb5-831c-a4355ee90dad" />
+
+Map to the technology library and view:
+
+bash
+# Map the generic logic to the cells in the sky130 library
+yosys> abc -liberty ./lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+
+# Display the resulting gate-level schematic
+yosys> show multiple_modules
+The show command visualizes the synthesized netlist, clearly showing the hierarchical structure with u1 and u2 instances.
+
+<img width="1920" height="1003" alt="image" src="https://github.com/user-attachments/assets/59d3021a-d888-4202-921f-d4d7892f8738" />
+
+
+Write out the hierarchical netlist: The resulting Verilog netlist explicitly defines the sub-modules and instantiates them in the top module, preserving the original structure.
+
+<img width="1920" height="986" alt="image" src="https://github.com/user-attachments/assets/d8d7d909-2713-4d6e-9d99-58dfbb4785b2" />
+
+
+
+After flattening, the design would lose this structure, appearing as one large module.
+
+<img width="1920" height="1011" alt="image" src="https://github.com/user-attachments/assets/aaff8a42-3e6f-4983-9a26-3c2704077660" />
+
+
+
+Sub-Module Level Synthesis
+Yosys also allows you to synthesize a single sub-module independently.
+
+bash
+yosys> synth -top sub_module1
+<img width="1920" height="997" alt="image" src="https://github.com/user-attachments/assets/6566d96a-0a91-4188-bc34-ddbcacc2757d" />
+
+
+This command focuses only on sub_module1, synthesizing it into a gate-level equivalent.
+
+<img width="1920" height="1003" alt="image" src="https://github.com/user-attachments/assets/4559cf0e-df1f-4aae-b4bc-a257dc23858f" />
+
+
+Why is module-level synthesis useful?
+
+Reuse: If a module (e.g., an adder) is instantiated hundreds of times, you can synthesize it once and reuse the resulting netlist, saving significant compilation time.
+
+Divide and Conquer: For massive, complex designs, designers can work on and optimize individual modules independently before integrating them at the top level. This makes managing complexity much easier.
+
+Various Flop Coding Styles and Optimization
+Why Use Flip-Flops?
+Combinational logic circuits can produce unintended, temporary signal changes known as glitches. While these might not matter in a purely combinational circuit, they can cause catastrophic failures if they are fed into the clock or reset input of another flip-flop.
+
+Flip-flops (Flops) are fundamental to synchronous design because they "register" or "capture" the output of combinational logic at a specific moment—the clock edge. This practice serves two critical purposes:
+
+It breaks long combinational paths, enabling the circuit to run at a higher clock speed.
+
+It prevents glitches from propagating through the system, ensuring stable and predictable behavior.
+
+![WhatsApp Image 2025-07-27 at 18 48 33_aed9489d](https://github.com/user-attachments/assets/092fd1e2-faa8-4717-b2eb-d5ba5744dd8d)
+
+
+Asynchronous Reset
+An asynchronous reset is a type of reset that affects the state of a flip-flop immediately, regardless of the clock signal. When the asynchronous reset signal is asserted, the flip-flop is forced to its reset state (typically 0). This is different from a synchronous reset, which only takes effect on the next active clock edge.
+
+![WhatsApp Image 2025-07-27 at 18 48 34_20809b48](https://github.com/user-attachments/assets/360274eb-8472-4a94-b1c4-9c6bdd656a7f)
+
 
